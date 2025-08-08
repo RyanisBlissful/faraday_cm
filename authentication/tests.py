@@ -4,13 +4,15 @@ from django.urls import reverse
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.core.signing import SignatureExpired, BadSignature
+from django.core.cache import cache
 
 from unittest.mock import patch, MagicMock
 from requests import HTTPError
 
+
 from rest_framework import status
 from rest_framework.test import APITestCase
-
+from rest_framework.throttling import ScopedRateThrottle
 
 def make_user_data(
     email="newuser@example.com",
@@ -33,11 +35,13 @@ def make_user_data(
 # =========================
 class UserRegistrationTests(APITestCase):
     @patch("authentication.views.send_verification_email")
-    def test_user_registration_success(self, send_mock):
+    def test_user_registration_success(self, send_mock):        
         """
         POST /auth/register/ creates an inactive user and attempts to send a verification email.
         Response includes created user data and email_sent=True on success.
         """
+        cache.clear()      # reset DRF throttle counters before each test
+        super().setUp()
         url = reverse("register")
         data = make_user_data()
 
@@ -70,6 +74,8 @@ class UserRegistrationTests(APITestCase):
         After registering, once the user is activated (simulating verification),
         the token endpoint returns 200 and includes user info in the response payload.
         """
+        cache.clear()      # reset DRF throttle counters before each test
+        super().setUp()
         # 1) Register (email send mocked)
         registration_url = reverse("register")
         user_data = make_user_data(email="loginok@example.com")
@@ -108,6 +114,8 @@ class UserRegistrationTests(APITestCase):
         If email sending fails, registration should still succeed (201),
         and the response should include email_sent=False.
         """
+        cache.clear()      # reset DRF throttle counters before each test
+        super().setUp()
         url = reverse("register")
         user_data = make_user_data(email="emailfail@example.com")
 
@@ -140,6 +148,8 @@ class UserRegistrationTests(APITestCase):
         - Attempt login before verification -> 401
         - Mark user active (simulate verification) -> login returns 200
         """
+        cache.clear()      # reset DRF throttle counters before each test
+        super().setUp()
         # Register
         reg_url = reverse("register")
         user_data = make_user_data(email="verifyme@example.com")
@@ -185,6 +195,8 @@ class RegistrationIntegrationTests(APITestCase):
         Happy path: registering a user returns 201, creates an inactive user,
         and triggers the email utility once.
         """
+        cache.clear()      # reset DRF throttle counters before each test
+        super().setUp()
         url = reverse("register")
         data = make_user_data(email="integration@example.com")
 
@@ -385,6 +397,8 @@ class TokenUtilsTests(TestCase):
 
 class VerifyEmailEndpointTests(APITestCase):
     def setUp(self):
+        cache.clear()
+        super().setUp()
         User = get_user_model()
         # Inactive by default per model; activation == verification
         self.user = User.objects.create_user(
@@ -398,6 +412,8 @@ class VerifyEmailEndpointTests(APITestCase):
 
     def test_verify_email_success(self):
         # Generate a real signed token, then call the endpoint
+        cache.clear()      # reset DRF throttle counters before each test
+        super().setUp()
         from authentication.token_utils import generate_email_verification_token
         token = generate_email_verification_token(self.user)
         url = reverse("verify-email") + f"?token={token}"
@@ -413,6 +429,8 @@ class VerifyEmailEndpointTests(APITestCase):
         self.assertTrue(refreshed.is_active)
 
     def test_verify_email_invalid_token(self):
+        cache.clear()      # reset DRF throttle counters before each test
+        super().setUp()
         # Garbage token should be treated as invalid -> 400
         url = reverse("verify-email") + "?token=this.is.not.valid"
         resp = self.client.get(url)
@@ -422,6 +440,8 @@ class VerifyEmailEndpointTests(APITestCase):
 
     @patch("authentication.views.verify_email_verification_token", side_effect=SignatureExpired("expired"))
     def test_verify_email_expired_token(self, _mock_verify):
+        cache.clear()      # reset DRF throttle counters before each test
+        super().setUp()
         # When verification raises SignatureExpired, view should return 400 "expired"
         url = reverse("verify-email") + "?token=anything"
         resp = self.client.get(url)
@@ -430,8 +450,42 @@ class VerifyEmailEndpointTests(APITestCase):
         self.assertEqual(resp.data["error"], "expired")
 
     def test_verify_email_missing_token(self):
+        cache.clear()      # reset DRF throttle counters before each test
+        super().setUp()
         # No token -> 400
         url = reverse("verify-email")
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("error", resp.data)
+
+###########################################################################################
+# tests for throttling implementation on authentication views
+###########################################################################################
+
+class ThrottlingTests(APITestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email="throttleuser@example.com",
+            password="StrongPassword123",
+            first_name="Throttle",
+            last_name="User",
+            role="employee",
+            is_active=True,
+        )
+        self.token_url = reverse("token_obtain_pair")
+
+    def test_login_throttling(self):
+        for _ in range(10):  # match your .env rate limit for login
+            resp = self.client.post(self.token_url, {
+                "email": self.user.email,
+                "password": "StrongPassword123"
+            }, format="json")
+            self.assertNotEqual(resp.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+        # One more request should trigger throttling
+        resp = self.client.post(self.token_url, {
+            "email": self.user.email,
+            "password": "StrongPassword123"
+        }, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_429_TOO_MANY_REQUESTS)

@@ -8,8 +8,9 @@ from django.contrib.auth import get_user_model
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.permissions import IsAuthenticated
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView, TokenVerifyView, TokenBlacklistView
 
 from .serializers import RegisterUserSerializer, CustomTokenObtainPairSerializer
 from .email_utils import send_verification_email
@@ -26,6 +27,8 @@ User = get_user_model()
 
 
 class RegisterUserView(APIView):
+    throttle_class = [ScopedRateThrottle]
+    throttle_scope = "register"
     def post(self, request, *args, **kwargs):
         serializer = RegisterUserSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -66,11 +69,13 @@ class RegisterUserView(APIView):
 
 
 
-class VerifyEmailView(APIView):
+class VerifyEmailView(APIView):    
     """
     GET /auth/verify-email/?token=...
     Validates the signed token, activates the user, and returns 200 on success.
     """
+    throttle_class = [ScopedRateThrottle]
+    throttle_scope = "verify-email"
     def get(self, request):
         token = request.GET.get("token")
         if not token:
@@ -103,6 +108,8 @@ class ResendVerificationView(APIView):
     POST { "email": "<address>" }
     Returns 200 with { "email_sent": true|false } without leaking account existence.
     """
+    throttle_class = [ScopedRateThrottle]
+    throttle_scope = "resend-verification"
     def post(self, request, *args, **kwargs):
         email = (request.data or {}).get("email")
         # Always return 200 to avoid account enumeration
@@ -138,6 +145,8 @@ class ResendVerificationView(APIView):
 class MeView(APIView):
     """Simple authenticated endpoint that returns the current user's basic info."""
     permission_classes = [IsAuthenticated]
+    throttle_class = [ScopedRateThrottle]
+    throttle_scope = "login"
 
     def get(self, request):
         user = request.user
@@ -150,6 +159,22 @@ class MeView(APIView):
         }
         return Response(data, status=status.HTTP_200_OK)
 
-
+#################################################################
+# token views including throttling
+################################################################
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "jwt-token"
+
+class ThrottledTokenRefreshView(TokenRefreshView):
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "jwt-refresh"
+
+class ThrottledTokenVerifyView(TokenVerifyView):
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "jwt-verify"
+
+class ThrottledTokenBlacklistView(TokenBlacklistView):
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "jwt-blacklist"

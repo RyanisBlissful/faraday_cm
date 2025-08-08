@@ -11,6 +11,8 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 import os
+
+from os import getenv
 from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
@@ -108,11 +110,35 @@ DATABASES = {
 
 AUTH_USER_MODEL = 'authentication.CustomUser'
 
+# Rest framework settings
+
 REST_FRAMEWORK = {
-        'DEFAULT_AUTHENTICATION_CLASSES': (
-            'rest_framework_simplejwt.authentication.JWTAuthentication',
-        )
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.ScopedRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'user': os.getenv('THROTTLE_USER_RATE', '100/day'),
+        'anon': os.getenv('THROTTLE_ANON_RATE', '10/day'),
+        'register': os.getenv('THROTTLE_REGISTER_RATE', '5/hour'),
+        'verify-email': os.getenv('THROTTLE_VERIFY_EMAIL_RATE', '10/hour'),
+        'resend-verification': os.getenv('THROTTLE_RESEND_VERIFICATION_RATE', '3/hour'),
+        'login': os.getenv('THROTTLE_LOGIN_RATE', '10/minute'),
+        'token_refresh': os.getenv('THROTTLE_TOKEN_REFRESH_RATE', '5/minute'),
+        'token_verify': os.getenv('THROTTLE_TOKEN_VERIFY_RATE', '5/minute'),
+        'token_blacklist': os.getenv('THROTTLE_TOKEN_BLACKLIST_RATE', '5/minute'),
+        'jwt-token': os.getenv('THROTTLE_JWT_TOKEN_RATE', '10/minute'),
+    },
 }
+
+
+
+
+# JWT settings
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=90), # change life back to somewhere between 5 and 30 minutes before production
