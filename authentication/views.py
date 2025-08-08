@@ -3,6 +3,7 @@ import logging
 from requests import HTTPError
 
 from django.core import signing
+from django.conf import settings
 from django.shortcuts import render
 from django.urls import reverse
 from django.contrib.auth.tokens import default_token_generator
@@ -65,7 +66,7 @@ class RegisterUserView(APIView):
 
         return Response(
             {
-                "user": UserSerializer(user).data,
+                "user": RegisterUserSerializer(user).data,
                 "email_sent": email_sent,
             },
             status=status.HTTP_201_CREATED,
