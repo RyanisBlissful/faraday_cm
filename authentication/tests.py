@@ -381,3 +381,57 @@ class TokenUtilsTests(TestCase):
         from authentication.token_utils import verify_email_verification_token
         with self.assertRaises(BadSignature):
             verify_email_verification_token("this.is.not.a.valid.token")
+
+
+class VerifyEmailEndpointTests(APITestCase):
+    def setUp(self):
+        User = get_user_model()
+        # Inactive by default per model; activation == verification
+        self.user = User.objects.create_user(
+            email="verifyendpoint@example.com",
+            password="StrongPassword123",
+            first_name="Verify",
+            last_name="Endpoint",
+            role="employee",
+            is_active=False,
+        )
+
+    def test_verify_email_success(self):
+        # Generate a real signed token, then call the endpoint
+        from authentication.token_utils import generate_email_verification_token
+        token = generate_email_verification_token(self.user)
+        url = reverse("verify-email") + f"?token={token}"
+
+        resp = self.client.get(url)
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn("message", resp.data)
+
+        # User should now be active
+        User = get_user_model()
+        refreshed = User.objects.get(pk=self.user.pk)
+        self.assertTrue(refreshed.is_active)
+
+    def test_verify_email_invalid_token(self):
+        # Garbage token should be treated as invalid -> 400
+        url = reverse("verify-email") + "?token=this.is.not.valid"
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("error", resp.data)
+        self.assertEqual(resp.data["error"], "invalid")
+
+    @patch("authentication.views.verify_email_verification_token", side_effect=SignatureExpired("expired"))
+    def test_verify_email_expired_token(self, _mock_verify):
+        # When verification raises SignatureExpired, view should return 400 "expired"
+        url = reverse("verify-email") + "?token=anything"
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("error", resp.data)
+        self.assertEqual(resp.data["error"], "expired")
+
+    def test_verify_email_missing_token(self):
+        # No token -> 400
+        url = reverse("verify-email")
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("error", resp.data)

@@ -27,33 +27,23 @@ def get_access_token():
     response.raise_for_status()
     return response.json()["access_token"]
 
+
 def send_verification_email(to_email, subject, html_content):
-    """Send an email using Microsoft Graph API."""
     access_token = get_access_token()
     headers = {
         "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
-
     email_data = {
         "message": {
             "subject": subject,
-            "body": {
-                "contentType": "HTML",
-                "content": html_content
-            },
-            "toRecipients": [
-                {
-                    "emailAddress": {
-                        "address": to_email
-                    }
-                }
-            ]
+            "body": {"contentType": "HTML", "content": html_content},
+            "toRecipients": [{"emailAddress": {"address": to_email}}],
         },
-        "saveToSentItems": "true"
+        "saveToSentItems": "true",
     }
-
     url = SENDMAIL_URL.format(sender=EMAIL_ADDRESS)
-    response = requests.post(url, headers=headers, json=email_data)
+    # Add a reasonable client-side timeout (e.g., 10s)
+    response = requests.post(url, headers=headers, json=email_data, timeout=10)
     response.raise_for_status()
-    print(f"Verification email sent to {to_email}.")
+

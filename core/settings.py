@@ -32,12 +32,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'zd0qafm8^en7h(1%tu7bg(70wrb!buu9zsn-)6wt#l5=43-dhc'
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-secret-key-CHANGE-ME")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [h for h in os.getenv("ALLOWED_HOSTS", "").split(",") if h] if not DEBUG else []
 
 
 # Application definition
@@ -91,16 +91,18 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
+
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'faraday_cm',
-        'USER': 'rbliss',
-        'PASSWORD': 'v4mL=Rl_lthow+abO$-E',
-        'HOST': 'localhost',
-        'PORT': '5432',
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.getenv("DB_NAME", "faraday_cm"),
+        "USER": os.getenv("DB_USER", "postgres"),
+        "PASSWORD": os.getenv("DB_PASSWORD", ""),
+        "HOST": os.getenv("DB_HOST", "localhost"),
+        "PORT": os.getenv("DB_PORT", "5432"),
     }
 }
+
 
 # User and token authentication
 
@@ -160,3 +162,12 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# --- Email verification config ---
+# How long a verification token is valid (hours). Defaults to 48 if not set.
+EMAIL_VERIFICATION_MAX_AGE_HOURS = int(os.getenv("EMAIL_VERIFICATION_MAX_AGE_HOURS", "48"))
+
+# Where the frontend handles the verification route. The view will compose:
+#   {FRONTEND_BASE_URL.rstrip('/')}{VERIFY_EMAIL_PATH}?token=...
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
+VERIFY_EMAIL_PATH = os.getenv("VERIFY_EMAIL_PATH", "/verify-email")
