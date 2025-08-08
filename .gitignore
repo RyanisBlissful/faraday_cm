@@ -1,0 +1,33 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# --- Environments & secrets ---
+.env
+.env.*
+*.env
+
+# --- Django ---
+db.sqlite3
+*.log
+media/
+staticfiles/
+static/
+# If you build collected static in-place:
+# */staticfiles/
+
+# --- Test/coverage ---
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# --- Editors/OS ---
+.vscode/
+.idea/
+*.code-workspace
+.DS_Store
+Thumbs.db
