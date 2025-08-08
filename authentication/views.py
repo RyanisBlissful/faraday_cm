@@ -1,9 +1,15 @@
 
 # authentication/views.py
 import logging
+
 from requests import HTTPError
+
+from urllib.parse import quote_plus
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
+
+from django.template.loader import render_to_string
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -24,11 +30,10 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
-
-
 class RegisterUserView(APIView):
     throttle_class = [ScopedRateThrottle]
     throttle_scope = "register"
+
     def post(self, request, *args, **kwargs):
         serializer = RegisterUserSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -37,27 +42,33 @@ class RegisterUserView(APIView):
         user = serializer.save()
 
         # Build a signed verification token and link
+        # 1) Create a signed verification token for the user
         token = generate_email_verification_token(user)
-        base_url = getattr(settings, "FRONTEND_BASE_URL", "http://localhost:3000")
-        verify_path = getattr(settings, "VERIFY_EMAIL_PATH", "/verify-email")
-        verify_url = f"{base_url.rstrip('/')}{verify_path}?token={token}"
 
-        subject = "Verify your Faraday account"
-        html_content = f"""
-            <p>Hi {user.first_name or ''},</p>
-            <p>Thanks for registering with Faraday_CM.</p>
-            <p><a href="{verify_url}">Verify my email</a></p>
-            <p>If you didn’t create this account, you can ignore this message.</p>
-        """
+        #  2) Build the verification URL from settings
+        base = settings.FRONTEND_BASE_URL.rstrip('/')
+        path = settings.VERIFY_EMAIL_PATH
+        if not path.startswith('/'):
+            path = '/' + path
+        verification_url = f"{base}{path}?token={quote_plus(token)}"
 
-        email_sent = False
+        # 3) Compose the email
+        subject = "Verify your Faraday_CM account"
+        display_name = (user.first_name or "").strip() or "there"
+
+        html_content = render_to_string(
+            "emails/verify_email.html",
+            {"display_name": display_name, "verification_url": verification_url},
+        )
+
+        # 4) Send via Microsoft Graph
+        email_sent = True
         try:
             send_verification_email(user.email, subject, html_content)
-            email_sent = True
         except HTTPError:
-            logger.exception("Failed to send verification email (HTTP) for %s", user.email)
+            email_sent = False
         except Exception:
-            logger.exception("Failed to send verification email for %s", user.email)
+            email_sent = False
 
         return Response(
             {

@@ -2,18 +2,18 @@
 
 from django.urls import reverse
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.core.signing import SignatureExpired, BadSignature
 from django.core.cache import cache
 
 from unittest.mock import patch, MagicMock
 from requests import HTTPError
 
-
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework.throttling import ScopedRateThrottle
 
+from authentication.email_utils import send_verification_email
 def make_user_data(
     email="newuser@example.com",
     password="StrongPassword123",
@@ -219,6 +219,7 @@ class RegistrationIntegrationTests(APITestCase):
 # =========================
 # Email utility unit tests
 # =========================
+@override_settings(EMAIL_ADDRESS="ledger_data@faradaymicro.com")
 class EmailUtilsTests(TestCase):
     @patch("authentication.email_utils.get_access_token", return_value="FAKE_ACCESS_TOKEN")
     @patch("authentication.email_utils.requests.post")
@@ -489,3 +490,21 @@ class ThrottlingTests(APITestCase):
             "password": "StrongPassword123"
         }, format="json")
         self.assertEqual(resp.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+
+class EmailFallbackTests(TestCase):
+    @override_settings(
+        EMAIL_ADDRESS=("ignored", "ledger_data@faradaymicro.com"),
+        EMAIL_HOST_USER="fallback@faradaymicro.com"
+    )
+    @patch("authentication.email_utils.get_access_token", return_value="FAKE_ACCESS_TOKEN")
+    @patch("authentication.email_utils.requests.post")
+    def test_email_address_fallback_to_host_user(self, mock_post, mock_token):
+        """If EMAIL_ADDRESS is a tuple, fallback to EMAIL_HOST_USER should be used as sender."""
+        mock_post.return_value.status_code = 202
+        mock_post.return_value.raise_for_status = MagicMock()
+
+        send_verification_email("recipient@example.com", "Subject", "<p>Body</p>")
+
+        url = mock_post.call_args.args[0]
+        self.assertIn("fallback@faradaymicro.com", url, "Fallback sender was not used in Graph URL")

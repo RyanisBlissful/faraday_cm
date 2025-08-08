@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 import os
+import sys
 
 from os import getenv
 from pathlib import Path
@@ -20,7 +21,7 @@ from dotenv import load_dotenv
 # Load environment variables from a .env file
 load_dotenv()
 
-EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
+EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS") or os.getenv("EMAIL_HOST_USER")
 AZURE_CLIENT_ID = os.getenv("AZURE_CLIENT_ID")
 AZURE_CLIENT_SECRET = os.getenv("AZURE_CLIENT_SECRET")
 AZURE_TENANT_ID = os.getenv("AZURE_TENANT_ID")
@@ -197,3 +198,30 @@ EMAIL_VERIFICATION_MAX_AGE_HOURS = int(os.getenv("EMAIL_VERIFICATION_MAX_AGE_HOU
 #   {FRONTEND_BASE_URL.rstrip('/')}{VERIFY_EMAIL_PATH}?token=...
 FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
 VERIFY_EMAIL_PATH = os.getenv("VERIFY_EMAIL_PATH", "/verify-email")
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'stream': sys.stdout,
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'DEBUG',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'authentication': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+    },
+}
