@@ -1,23 +1,24 @@
 
 # authentication/views.py
 import logging
-
 from requests import HTTPError
-
+from datetime import timedelta
 from urllib.parse import quote_plus
-
 from django.conf import settings
+from django.utils import timezone
 from django.contrib.auth import get_user_model
-
 from django.template.loader import render_to_string
-
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.permissions import IsAuthenticated
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView, TokenVerifyView, TokenBlacklistView
-
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+    TokenVerifyView,
+    TokenBlacklistView,
+)
 from .serializers import RegisterUserSerializer, CustomTokenObtainPairSerializer
 from .email_utils import send_verification_email
 from .token_utils import (
@@ -31,7 +32,7 @@ User = get_user_model()
 
 
 class RegisterUserView(APIView):
-    throttle_class = [ScopedRateThrottle]
+    throttle_classes = [ScopedRateThrottle]
     throttle_scope = "register"
 
     def post(self, request, *args, **kwargs):
@@ -45,7 +46,7 @@ class RegisterUserView(APIView):
         # 1) Create a signed verification token for the user
         token = generate_email_verification_token(user)
 
-        #  2) Build the verification URL from settings
+        # 2) Build the verification URL from settings
         base = settings.FRONTEND_BASE_URL.rstrip('/')
         path = settings.VERIFY_EMAIL_PATH
         if not path.startswith('/'):
@@ -55,7 +56,6 @@ class RegisterUserView(APIView):
         # 3) Compose the email
         subject = "Verify your Faraday_CM account"
         display_name = (user.first_name or "").strip() or "there"
-
         html_content = render_to_string(
             "emails/verify_email.html",
             {"display_name": display_name, "verification_url": verification_url},
@@ -79,14 +79,14 @@ class RegisterUserView(APIView):
         )
 
 
-
-class VerifyEmailView(APIView):    
+class VerifyEmailView(APIView):
     """
     GET /auth/verify-email/?token=...
     Validates the signed token, activates the user, and returns 200 on success.
     """
-    throttle_class = [ScopedRateThrottle]
+    throttle_classes = [ScopedRateThrottle]
     throttle_scope = "verify-email"
+
     def get(self, request):
         token = request.GET.get("token")
         if not token:
@@ -108,10 +108,10 @@ class VerifyEmailView(APIView):
 
         if not user.is_active:
             user.is_active = True
-            user.save(update_fields=["is_active"])
+            user.verified_at = timezone.now()
+            user.save(update_fields=["is_active", "verified_at"])
 
         return Response({"message": "Email verified successfully."}, status=status.HTTP_200_OK)
-
 
 
 class ResendVerificationView(APIView):
@@ -119,10 +119,12 @@ class ResendVerificationView(APIView):
     POST { "email": "<address>" }
     Returns 200 with { "email_sent": true|false } without leaking account existence.
     """
-    throttle_class = [ScopedRateThrottle]
+    throttle_classes = [ScopedRateThrottle]
     throttle_scope = "resend-verification"
+
     def post(self, request, *args, **kwargs):
         email = (request.data or {}).get("email")
+
         # Always return 200 to avoid account enumeration
         if not email:
             return Response({"email_sent": False}, status=status.HTTP_200_OK)
@@ -136,12 +138,10 @@ class ResendVerificationView(APIView):
         base_url = getattr(settings, "FRONTEND_BASE_URL", "http://localhost:3000")
         verify_path = getattr(settings, "VERIFY_EMAIL_PATH", "/verify-email")
         verify_url = f"{base_url.rstrip('/')}{verify_path}?token={token}"
-
         subject = "Verify your Faraday account"
         html_content = f"""
             <p>Please verify your account by clicking <a href="{verify_url}">this link</a>.</p>
         """
-
         try:
             send_verification_email(user.email, subject, html_content)
             return Response({"email_sent": True}, status=status.HTTP_200_OK)
@@ -149,43 +149,28 @@ class ResendVerificationView(APIView):
             logger.exception("Failed to resend verification email (HTTP) for %s", user.email)
         except Exception:
             logger.exception("Failed to resend verification email for %s", user.email)
-
         return Response({"email_sent": False}, status=status.HTTP_200_OK)
 
 
-class MeView(APIView):
-    """Simple authenticated endpoint that returns the current user's basic info."""
-    permission_classes = [IsAuthenticated]
-    throttle_class = [ScopedRateThrottle]
-    throttle_scope = "login"
-
-    def get(self, request):
-        user = request.user
-        data = {
-            "id": user.id,
-            "email": user.email,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "role": getattr(user, "role", None),
-        }
-        return Response(data, status=status.HTTP_200_OK)
-
-#################################################################
+# ##############################
 # token views including throttling
-################################################################
+# ##############################
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "jwt-token"
 
+
 class ThrottledTokenRefreshView(TokenRefreshView):
     throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "jwt-refresh"
+    throttle_scope = "jwt-refresh"  # matches settings.DEFAULT_THROTTLE_RATES
+
 
 class ThrottledTokenVerifyView(TokenVerifyView):
     throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "jwt-verify"
+    throttle_scope = "jwt-verify"   # matches settings.DEFAULT_THROTTLE_RATES
+
 
 class ThrottledTokenBlacklistView(TokenBlacklistView):
     throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "jwt-blacklist"
+    throttle_scope = "jwt-blacklist"  # matches settings.DEFAULT_THROTTLE_RATES

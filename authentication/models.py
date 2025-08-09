@@ -1,6 +1,7 @@
 # authentication/models.py
 from django.db import models
 from django.contrib.auth.models import AbstractUser, PermissionsMixin, BaseUserManager
+from django.contrib.postgres.fields import CIEmailField
 
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
@@ -28,7 +29,8 @@ class CustomUserManager(BaseUserManager):
 
 class CustomUser(AbstractUser, PermissionsMixin):
     # REMOVE username field inherited from AbstractUser
-    username = None
+    username = None # Disable username field
+    verification_token_created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)  # Timestamp for verification token creation
 
     ROLE_CHOICES = [
         ('admin', 'Admin'),
@@ -36,11 +38,14 @@ class CustomUser(AbstractUser, PermissionsMixin):
         ('employee', 'Employee'),
     ]
 
-    email = models.EmailField(unique=True)
+    email = CIEmailField(unique=True)
     first_name = models.CharField(max_length=50, blank=False, null=False)
     last_name  = models.CharField(max_length=50, blank=False, null=False)
     role       = models.CharField(max_length=20, choices=ROLE_CHOICES, blank=False, null=False)
+    
     is_active  = models.BooleanField(default=False)
+    verified_at = models.DateTimeField(blank=True, null=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     # MFA fields

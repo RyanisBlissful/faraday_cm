@@ -1,9 +1,14 @@
+from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework.validators import UniqueValidator
 
 from .models import CustomUser
 
 class RegisterUserSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(
+        validators=[UniqueValidator(queryset=CustomUser.objects.all())]
+    )
     password = serializers.CharField(write_only=True, min_length=8)
     
     class Meta:
@@ -18,6 +23,8 @@ class RegisterUserSerializer(serializers.ModelSerializer):
             role=validated_data['role'],
             password=validated_data['password']
         )
+        user.verification_token = generate_email_verification_token(user)
+        user.verification_token_created_at = timezone.now()
         return user
     
     

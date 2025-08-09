@@ -7,7 +7,6 @@ from .views import (
     ThrottledTokenVerifyView,
     ThrottledTokenBlacklistView,
     RegisterUserView,
-    MeView,
     VerifyEmailView,
     ResendVerificationView,
 )
@@ -26,6 +25,5 @@ urlpatterns = [
     path('token/blacklist/', ThrottledTokenBlacklistView.as_view(), name='token_blacklist'),
 
     # Current user info
-    path('me/', MeView.as_view(), name='me'),
 ]
 
